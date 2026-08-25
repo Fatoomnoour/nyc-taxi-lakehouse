@@ -1,0 +1,10 @@
+flowchart LR
+    A[NYC TLC Parquet or sample generator] --> B[Bronze immutable raw files]
+    B --> C[Silver normalized trips]
+    C --> D{Quality Gate}
+    D -->|pass| E[Gold daily metrics]
+    D -->|fail| X[Fail loudly and report rejected rows]
+    E --> F[DuckDB or BI consumer]
+    G[Airflow DAG] -. schedule and backfill .-> B
+    G -. retries and observability .-> C
+    G -. publish .-> E
