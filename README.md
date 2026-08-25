@@ -83,7 +83,7 @@ The DAG does not download files automatically. Download the months you actually 
 
 Rows are rejected when a required timestamp is missing, drop-off occurs before pickup, duration is longer than one day, distance is not positive, or total amount is smaller than fare amount. The test suite also checks that the aggregate trip count and revenue reconcile with the silver layer.
 
-The current test run covers four cases and includes an end-to-end smoke run on 250 rows. It does not claim distributed performance; that is the next step once a real sample has been profiled.
+The current test run covers six cases and includes an end-to-end smoke run on 250 rows. It does not claim distributed performance; that is the next step once a real sample has been profiled.
 
 ## Repository layout
 
