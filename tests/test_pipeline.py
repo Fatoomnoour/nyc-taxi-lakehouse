@@ -17,7 +17,7 @@ def test_invalid_trips_are_rejected() -> None:
     raw = generate_sample(3)
     raw.loc[0, "trip_distance"] = -1
     raw.loc[1, "tpep_dropoff_datetime"] = (
-        raw.loc[1, "tpep_pickup_datetime"] - pd.Timedelta(minutes=1)
+        raw.loc[1, "tpep_pickup_datetime"] - pd.Timedelta(1, unit="min")
     )
     silver, rejected = to_silver(raw)
     assert rejected == 2

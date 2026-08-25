@@ -1,39 +1,32 @@
 # NYC Taxi Lakehouse
 
-A production-style, local-first data platform for turning NYC taxi trip records into trusted analytics datasets. The project demonstrates incremental ingestion, medallion architecture, dimensional modeling, data-quality checks, reproducible tests, and CI/CD without requiring a paid cloud account.
+This repository contains a small but complete batch pipeline for NYC taxi trip records. I built it as a local project first: it can run offline with a deterministic fixture, and it can also process a real TLC Parquet file when one is available.
 
-## Why this project matters
+The point of the project is not to pretend that a laptop is a distributed cluster. It is to keep the transformation rules, data checks, and output contract easy to inspect before moving the same ideas to Spark, Airflow, and a warehouse.
 
-Transportation data is high-volume, time-partitioned, and prone to late or malformed records. This pipeline treats the raw source as an append-only landing zone, creates deterministic silver transformations, and publishes a gold daily-metrics mart for analytics consumers.
-
-## Architecture
+## Pipeline
 
 ```mermaid
 flowchart LR
-    A[NYC TLC Parquet or sample generator] --> B[Bronze: immutable raw files]
-    B --> C[Silver: normalized trips]
-    C --> D[Quality gate]
-    D --> E[Gold: daily taxi metrics]
-    E --> F[DuckDB analytics]
-    G[Airflow schedule] -. orchestrates .-> B
-    G -.-> C
-    G -.-> D
-    G -.-> E
+    A[NYC TLC Parquet] --> B[Bronze raw file]
+    B --> C[Silver normalized trips]
+    C --> D{Quality checks}
+    D -->|valid| E[Gold daily metrics]
+    D -->|invalid| X[Fail with a report]
+    E --> F[DuckDB or BI client]
 ```
 
-## Data layers
+## What is implemented
 
-| Layer | Purpose | Output |
+The command reads taxi records, normalizes timestamps, calculates trip duration, maps payment codes, rejects records that violate basic business rules, and writes two Parquet outputs. The gold table is grouped by trip date and payment method and contains trip count, revenue, average fare, average distance, average duration, total tips, and tip rate.
+
+| Layer | Meaning | Local output |
 | --- | --- | --- |
-| Bronze | Preserve the source and ingestion metadata | `data/bronze/*.parquet` |
-| Silver | Normalize columns, remove invalid trips, derive duration and revenue fields | `data/silver/trips.parquet` |
-| Gold | Publish business-ready daily aggregates | `data/gold/daily_metrics.parquet` |
+| Bronze | A copy of the input used for repeatable processing | `data/bronze/*.parquet` |
+| Silver | Clean rows with a stable set of names and types | `data/silver/trips.parquet` |
+| Gold | Aggregated data intended for analysis | `data/gold/daily_metrics.parquet` |
 
-## Metrics
-
-The gold table includes trip count, total revenue, average fare, average distance, average duration, and tip rate by service date and payment type. Invalid records are rejected when pickup time is after drop-off time, distance or fare is negative, or required timestamps are missing.
-
-## Quick start
+## Run it locally
 
 ```bash
 python -m venv .venv
@@ -41,37 +34,40 @@ source .venv/bin/activate
 pip install -e '.[dev]'
 python -m src.pipeline --sample-rows 5000
 pytest -q
+ruff check .
 ```
 
-The sample mode is deterministic and offline. To use an official TLC Parquet file, place it in `data/incoming/` and run:
+The offline command is useful for tests and code review. To process a real file downloaded from the [NYC TLC Trip Record Data](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page), run:
 
 ```bash
-python -m src.pipeline --input data/incoming/yellow_tripdata.parquet
+python -m src.pipeline --input data/incoming/yellow_tripdata_2024-01.parquet
 ```
 
-The public source is the [NYC TLC Trip Record Data](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page).
+The input file is intentionally not committed to the repository. Real TLC files are large, and the source page is the correct place to select the month required for an analysis.
 
-## Engineering practices demonstrated
+## Data checks
 
-The pipeline is idempotent: rerunning the same input produces the same outputs. Transformation logic is separated from I/O, invalid rows are measured rather than silently discarded, and the quality gate fails loudly when business constraints are violated. The project includes unit tests, linting, type-aware function signatures, a Makefile, and GitHub Actions.
+Rows are rejected when a required timestamp is missing, drop-off occurs before pickup, duration is longer than one day, distance is not positive, or total amount is smaller than fare amount. The test suite also checks that the aggregate trip count and revenue reconcile with the silver layer.
 
-## Planned production extension
+The current test run covers four cases and includes an end-to-end smoke run on 250 rows. It does not claim distributed performance; that is the next step once a real sample has been profiled.
 
-For a cloud deployment, the same contracts can be mapped to object storage, Spark for distributed transformations, Airflow for scheduling and backfills, dbt for warehouse models, and BigQuery for serving. The local implementation intentionally keeps the core logic executable on a laptop first.
-
-## Repository structure
+## Repository layout
 
 ```text
 src/
-  pipeline.py       # CLI orchestration
-  generate_sample.py# deterministic local fixture
-  transform.py      # bronze -> silver -> gold
-  quality.py        # data-quality rules and report
- tests/              # unit and pipeline tests
- architecture/       # architecture diagram source
- data/               # ignored runtime outputs
- .github/workflows/  # CI checks
+  generate_sample.py  # deterministic fixture for local tests
+  pipeline.py         # command-line entry point
+  quality.py          # quality report and fail-fast gate
+  transform.py        # bronze -> silver -> gold
+architecture/
+  pipeline.mmd        # editable Mermaid diagram
+tests/
+  test_pipeline.py
 ```
+
+## Next engineering steps
+
+The natural next increments are incremental partition loading, a small DuckDB SQL layer, an Airflow DAG with retries and backfills, and a Spark implementation benchmarked against the local version. Those pieces should be added only after profiling a real TLC file, so the repository does not make performance claims without measurements.
 
 ## License
 
